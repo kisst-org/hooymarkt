@@ -9,6 +9,14 @@
 
 set -eu
 
+declare -A env_names
+env_names[t]=tst
+env_names[tst]=tst
+env_names[stg]=stg
+env_names[prd]=prd
+env_names[all]=all
+
+
 rootdir=$(dirname $(readlink -f ${BASH_SOURCE[0]}))
 : ${RENDER_ENV_DIR:=${rootdir}/envs}
 : ${RENDER_CHART_DIR:=${rootdir}/helm-charts}
@@ -19,7 +27,7 @@ main() {
     for file in $def_files; do
         verbose reading render-def ${file} for ${envs}
         . $file
-        if [[ $envs == all ]]; then
+        if [[ $envs == *all* ]]; then
             # all_envs might be different for each application
             envs=${all_envs:-${RENDER_ALL_ENVS:-"tst stg prd"}}
         fi
@@ -49,13 +57,10 @@ parse_options() {
             -v|--verbose)  log_verbose=true; log_info=true;;
             -q|--quiet)    log_verbose=false; log_info=false;;
             --debug)       set -x;;
-            l|lab|@l|@lab) envs+=" lab" ;;
-            t|tst|@t|@tst) envs+=" tst" ;;
-            s|stg|@s|@stg) envs+=" stg" ;;
-            prd|@prd)      envs+=" prd" ;;  # production needs to be more explicit
-            all|@all)      envs="all" ;; # all needs to be explicit, and should not have other environments
+            @*)            e=${env_names[${1#@}]}; envs+=" $e" ;;
             *)
-                if [[ -f $1 ]]; then def_files+=" $1"
+                if [[ ! -z ${env_names[$1]:-} ]]; then envs+=" ${env_names[$1]}"
+                elif [[ -f $1 ]]; then def_files+=" $1"
                 elif [[ -d $1 ]]; then def_files+=" $1/render-app-*.def"
                 fi
         esac
@@ -105,6 +110,7 @@ render_helm() {
     value_opts+=$(if_file_exists $RENDER_ENV_DIR/values-env-${env}.yaml -f)
     value_opts+=$(if_file_exists $defdir/values-app-${appname}.yaml -f)
     value_opts+=$(if_file_exists $defdir/values-appenv-${appname}-${env}.yaml -f)
+    value_opts+=$(if_file_exists $defdir/values-${appname}-${env}.yaml -f)
     for ch in $charts; do
         cmd="helm template $value_opts $release ${RENDER_CHART_DIR}/$ch"
         verbose "    $cmd"

@@ -1,4 +1,12 @@
 #!/usr/bin/env bash
+# Script Name: render-manifests
+# Description: render helm manifests for applications and environments
+# Author: Mark Hooijkaas
+# Sourcecode: https://github.com/kisst-org/markisst/
+# License: Apache License version 2.0
+# Install or update to newest version with following command:
+#   curl -OL https://raw.githubusercontent.com/kisst-org/markisst/refs/heads/main/render-manifests && chmod 755 render-manifests
+
 set -eu
 
 rootdir=$(dirname $(readlink -f ${BASH_SOURCE[0]}))

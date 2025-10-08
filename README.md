@@ -48,6 +48,13 @@ Additionally the following tools are needed for some commands:
 - `kubectl`: with a correct kubeconfig file for the `--diff` and `--apply`
 
 Installation can be done by copying the `render-manifests` script to the correct location.
+```
+curl -OL https://raw.githubusercontent.com/kisst-org/markisst/refs/heads/main/render-manifests
+chmod 755 render-manifests
+```
+No further file need to be downloaded
+
+# Directory structure
 The script can be placed in the directory with all the manifests definitions.
 
 The following directory structure is recommended:

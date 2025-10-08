@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+set -eu
+
+rootdir=$(dirname $(readlink -f ${BASH_SOURCE[0]}))
+: ${RENDER_ENV_DIR:=${rootdir}/envs}
+: ${RENDER_CHART_DIR:=${rootdir}/helm-charts}
+: ${RENDER_OUTPUT_DIR:=${rootdir}/manifests}
+
+main() {
+    parse_options "${@}"
+    for file in $def_files; do
+        info rendering $file for $env
+        . $file
+        dir=manifests/${env}/${appname}
+        rm -rf $dir; mkdir -p $dir
+        render
+    done
+}
+
+
+verbose() { if ${log_verbose:-false}; then printf "%s" "${@}"; echo; fi }
+info()    { if ${log_info:-true};     then echo "${@}"; fi }
+run_verbose() { cmd=$1; shift; verbose "    $cmd" "${@}"; $cmd "${@}"; }
+
+# The following function is
+render() { render_helm; }
+
+parse_options() {
+    def_files=""
+    env=${RENDER_DEFAULT_ENV:-tst}
+    while [ ! $# -eq 0 ]; do
+        case $1 in
+            -h|--help)     show_help; exit 0;;
+            -v|--verbose)  log_verbose=true; log_info=true;;
+            -q|--quiet)    log_verbose=false; log_info=false;;
+            --debug)       set -x;;
+            l|lab|@l|@lab) env=lab ;;
+            t|tst|@t|@tst) env=tst ;;
+            s|stg|@s|@stg) env=stg ;;
+            prd|@prd)      env=prd ;;  # production needs to be more explicit
+            *)
+                if [[ -f $1 ]]; then def_files+=" $1"
+                elif [[ -d $1 ]]; then def_files+=" $1/render-app-*.def"
+                fi
+        esac
+        shift
+    done
+}
+
+
+show_help() { cat <<EOF
+render-manifests [options] [environment...] <render-def>...
+
+Options:
+  -h|--help        show this help
+  -v|--verbose     give more output
+  -q|--quiet       no output
+  -d|--diff        run 'kubectl diff' with the rendered manifests
+  -a|--apply       run 'kubectl apply' with the rendered manifests
+  -c|--commit      run 'git commit' (--pull is implied)
+  -p|--pull        run 'git pull' before starting to render, to avoid merge conflicts
+  -o|--output-dir  the directory where manifests will be rendered to
+
+Environments:
+It is possible to specify an environment as follows '@lab'.
+Shortcuts e.g. '@l' and even just 'l' or 'lab' are planned
+
+Render Definitions:
+Can either be a file, that will be sourced, or a directory that contains exactly 1 file with a name 'render-*.def'.
+EOF
+}
+
+
+split_into_files() {
+    yq -s \"$dir/\"'+ (.kind | downcase) + "_" + .metadata.name + ".yaml"'
+}
+
+if_file_exists() { if [[ -f $1 ]]; then echo " ${2:-} $1"; else echo "" ; fi }
+render_helm() {
+    release=$appname-$env # this is probably not really used with helm template
+    defdir=$(dirname $(readlink -f ${file}))
+
+    value_opts=""
+    echo $RENDER_ENV_DIR/values-env-${env}.yaml
+    value_opts+=$(if_file_exists $RENDER_ENV_DIR/values-env-${env}.yaml -f)
+    value_opts+=$(if_file_exists $defdir/values-app-${appname}.yaml -f)
+    value_opts+=$(if_file_exists $defdir/values-appenv-${appname}-${env}.yaml -f)
+    for ch in $charts; do
+        cmd="helm template $value_opts $release ${RENDER_CHART_DIR}/$ch"
+        verbose "    $cmd"
+        $cmd | split_into_files
+    done
+}
+
+main "${@}"

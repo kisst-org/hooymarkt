@@ -17,16 +17,23 @@ rootdir=$(dirname $(readlink -f ${BASH_SOURCE[0]}))
 main() {
     parse_options "${@}"
     for file in $def_files; do
-        info rendering $file for $env
+        verbose reading render-def ${file} for ${envs}
         . $file
-        dir=manifests/${env}/${appname}
-        rm -rf $dir; mkdir -p $dir
-        render
+        if [[ $envs == all ]]; then
+            # all_envs might be different for each application
+            envs=${all_envs:-${RENDER_ALL_ENVS:-"tst stg prd"}}
+        fi
+        for env in $envs; do
+            info rendering ${appname}-${env}
+            dir=manifests/${env}/${appname}
+            rm -rf $dir; mkdir -p $dir
+            render
+        done
     done
 }
 
 
-verbose() { if ${log_verbose:-false}; then printf "%s" "${@}"; echo; fi }
+verbose() { if ${log_verbose:-false}; then printf "%s " "${@}"; echo; fi }
 info()    { if ${log_info:-true};     then echo "${@}"; fi }
 run_verbose() { cmd=$1; shift; verbose "    $cmd" "${@}"; $cmd "${@}"; }
 
@@ -35,17 +42,18 @@ render() { render_helm; }
 
 parse_options() {
     def_files=""
-    env=${RENDER_DEFAULT_ENV:-tst}
+    envs=""
     while [ ! $# -eq 0 ]; do
         case $1 in
             -h|--help)     show_help; exit 0;;
             -v|--verbose)  log_verbose=true; log_info=true;;
             -q|--quiet)    log_verbose=false; log_info=false;;
             --debug)       set -x;;
-            l|lab|@l|@lab) env=lab ;;
-            t|tst|@t|@tst) env=tst ;;
-            s|stg|@s|@stg) env=stg ;;
-            prd|@prd)      env=prd ;;  # production needs to be more explicit
+            l|lab|@l|@lab) envs+=" lab" ;;
+            t|tst|@t|@tst) envs+=" tst" ;;
+            s|stg|@s|@stg) envs+=" stg" ;;
+            prd|@prd)      envs+=" prd" ;;  # production needs to be more explicit
+            all|@all)      envs="all" ;; # all needs to be explicit, and should not have other environments
             *)
                 if [[ -f $1 ]]; then def_files+=" $1"
                 elif [[ -d $1 ]]; then def_files+=" $1/render-app-*.def"
@@ -53,6 +61,11 @@ parse_options() {
         esac
         shift
     done
+    if [[ -z $envs ]]; then envs=${RENDER_DEFAULT_ENVS:-tst}; fi
+    # better test that also works with one or more spaces, might be:
+    #   if [[ ${envs:-} =~ '^ *$' ]]; then ...
+    # see https://unix.stackexchange.com/questions/146942/how-can-i-test-if-a-variable-is-empty-or-contains-only-spaces
+
 }
 
 
@@ -89,7 +102,6 @@ render_helm() {
     defdir=$(dirname $(readlink -f ${file}))
 
     value_opts=""
-    echo $RENDER_ENV_DIR/values-env-${env}.yaml
     value_opts+=$(if_file_exists $RENDER_ENV_DIR/values-env-${env}.yaml -f)
     value_opts+=$(if_file_exists $defdir/values-app-${appname}.yaml -f)
     value_opts+=$(if_file_exists $defdir/values-appenv-${appname}-${env}.yaml -f)

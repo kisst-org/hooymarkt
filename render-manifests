@@ -17,10 +17,16 @@ env_names[prd]=prd
 env_names[all]=all
 
 
-rootdir=$(dirname $(readlink -f ${BASH_SOURCE[0]}))
-: ${RENDER_ENV_DIR:=${rootdir}/envs}
-: ${RENDER_CHART_DIR:=${rootdir}/helm-charts}
-: ${RENDER_OUTPUT_DIR:=${rootdir}/manifests}
+: ${RENDER_ROOT_DIR:=$(dirname $(readlink -f ${BASH_SOURCE[0]}))}
+: ${RENDER_ENV_DIR:=${RENDER_ROOT_DIR}/envs}
+: ${RENDER_CHART_DIR:=${RENDER_ROOT_DIR}/helm-charts}
+: ${RENDER_OUTPUT_DIR:=${RENDER_ROOT_DIR}/manifests}
+: ${RENDER_CONFIG_FILE:=${RENDER_ROOT_DIR}/render.config}
+: ${RENDER_ALL_ENVS:="tst stg prd"}
+
+if [[ -f ${RENDER_CONFIG_FILE} ]]; then
+    source ${RENDER_CONFIG_FILE}
+fi
 
 main() {
     parse_options "${@}"
@@ -29,7 +35,7 @@ main() {
         . $file
         if [[ $envs == *all* ]]; then
             # all_envs might be different for each application
-            envs=${all_envs:-${RENDER_ALL_ENVS:-"tst stg prd"}}
+            envs=${all_envs:-${RENDER_ALL_ENVS}}
         fi
         for env in $envs; do
             info rendering ${appname}-${env}

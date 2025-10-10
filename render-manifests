@@ -38,10 +38,7 @@ main() {
             envs=${all_envs:-${RENDER_ALL_ENVS}}
         fi
         for env in $envs; do
-            info rendering ${appname}-${env}
-            dir=manifests/${env}/${appname}
-            rm -rf $dir; mkdir -p $dir
-            render
+            render_env
         done
     done
 }
@@ -50,9 +47,6 @@ main() {
 verbose() { if ${log_verbose:-false}; then printf "%s " "${@}"; echo; fi }
 info()    { if ${log_info:-true};     then echo "${@}"; fi }
 run_verbose() { cmd=$1; shift; verbose "    $cmd" "${@}"; $cmd "${@}"; }
-
-# The following function is
-render() { render_helm; }
 
 parse_options() {
     def_files=""
@@ -107,6 +101,19 @@ split_into_files() {
     yq -s \"$dir/\"'+ (.kind | downcase) + "_" + .metadata.name + ".yaml"'
 }
 
+render_env() {
+    . envs/render-env-${env}.def
+    defdir=$(dirname $(readlink -f ${file}))
+    if [[ -f $defdir/values-${appname}-${env}.yaml ]]; then
+        info rendering ${appname}-${env}
+        dir=manifests/${env}/${appname}
+        rm -rf $dir; mkdir -p $dir
+        render_helm
+    else
+        info skipping ${appname}-${env}
+    fi
+}
+
 if_file_exists() { if [[ -f $1 ]]; then echo " ${2:-} $1"; else echo "" ; fi }
 render_helm() {
     release=$appname-$env # this is probably not really used with helm template
@@ -115,8 +122,8 @@ render_helm() {
     value_opts=""
     value_opts+=$(if_file_exists $RENDER_ENV_DIR/values-env-${env}.yaml -f)
     value_opts+=$(if_file_exists $defdir/values-app-${appname}.yaml -f)
-    value_opts+=$(if_file_exists $defdir/values-appenv-${appname}-${env}.yaml -f)
-    value_opts+=$(if_file_exists $defdir/values-${appname}-${env}.yaml -f)
+    #value_opts+=$(if_file_exists $defdir/values-appenv-${appname}-${env}.yaml -f)
+    value_opts+=" -f $defdir/values-${appname}-${env}.yaml"
     for ch in $charts; do
         cmd="helm template $value_opts $release ${RENDER_CHART_DIR}/$ch"
         verbose "    $cmd"

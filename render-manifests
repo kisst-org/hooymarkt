@@ -32,17 +32,12 @@ main() {
     parse_options "${@}"
     for file in $def_files; do
         verbose reading render-def ${file} for ${envs}
-        . $file
-        if [[ $envs == *all* ]]; then
-            # all_envs might be different for each application
-            envs=${all_envs:-${RENDER_ALL_ENVS}}
-        fi
+        init_app_def
         for env in $envs; do
             render_env
         done
     done
 }
-
 
 verbose() { if ${log_verbose:-false}; then printf "%s " "${@}"; echo; fi }
 info()    { if ${log_info:-true};     then echo "${@}"; fi }
@@ -97,14 +92,24 @@ EOF
 }
 
 
-split_into_files() {
-    yq -s \"$dir/\"'+ (.kind | downcase) + "_" + .metadata.name + ".yaml"'
+init_app_def() {
+    # read the def file to determine all_envs and helm_charts
+    unset helm_charts helm_chart_for all_envs
+    declare -A helm_charts_for
+    source ${file}
+    if [[ $envs == *all* ]]; then
+        # all_envs might be different for each application
+        envs=${all_envs:-${RENDER_ALL_ENVS}}
+    fi
 }
 
 render_env() {
+    #render_charts=${helm_charts_for[$env]:-${helm_charts:-${charts}}}
+    source $RENDER_ENV_DIR/render-env-${env}.def
+    render_charts=${helm_charts:-${charts}}
     defdir=$(dirname $(readlink -f ${file}))
     if [[ -f $defdir/values-${appname}-${env}.yaml ]]; then
-        info rendering ${appname}-${env}
+        info rendering ${appname}-${env} with charts ${render_charts}
         dir=manifests/${env}/${appname}
         rm -rf $dir; mkdir -p $dir
         render_helm
@@ -117,21 +122,23 @@ if_file_exists() { if [[ -f $1 ]]; then echo " ${2:-} $1"; else echo "" ; fi }
 render_helm() {
     release=$appname-$env # this is probably not really used with helm template
     defdir=$(dirname $(readlink -f ${file}))
-
-    value_opts=""
-    value_opts+=$(if_file_exists $RENDER_ENV_DIR/values-env-${env}.yaml -f)
-    value_opts+=$(if_file_exists $defdir/values-app-${appname}.yaml -f)
-    #value_opts+=$(if_file_exists $defdir/values-appenv-${appname}-${env}.yaml -f)
+    value_opts="-f $RENDER_ENV_DIR/values-env-${env}.yaml"
+    value_opts+=" -f $defdir/values-app-${appname}.yaml"
     value_opts+=" -f $defdir/values-${appname}-${env}.yaml"
-    for ch in $charts; do
+    for ch in $render_charts; do
         cmd="helm template $value_opts $release ${RENDER_CHART_DIR}/$ch"
         verbose "    $cmd"
         $cmd | split_into_files
-        if [[ ${extra_cmd:-} == diff ]]; then
-            info diffing $dir
-            kubectl diff --context $context -f $dir
-        fi
     done
+    if [[ ${extra_cmd:-} == diff ]]; then
+        info diffing $dir
+        kubectl diff --context $context -f $dir
+    fi
 }
+
+split_into_files() {
+    yq -s \"$dir/\"'+ (.kind | downcase) + "_" + .metadata.name + ".yaml"'
+}
+
 
 main "${@}"

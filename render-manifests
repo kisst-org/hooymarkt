@@ -102,7 +102,6 @@ split_into_files() {
 }
 
 render_env() {
-    . envs/render-env-${env}.def
     defdir=$(dirname $(readlink -f ${file}))
     if [[ -f $defdir/values-${appname}-${env}.yaml ]]; then
         info rendering ${appname}-${env}
@@ -129,7 +128,7 @@ render_helm() {
         verbose "    $cmd"
         $cmd | split_into_files
         if [[ ${extra_cmd:-} == diff ]]; then
-            info diffing
+            info diffing $dir
             kubectl diff --context $context -f $dir
         fi
     done

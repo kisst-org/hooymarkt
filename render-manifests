@@ -50,9 +50,11 @@ parse_options() {
             -h|--help)     show_help; exit 0;;
             -v|--verbose)  log_verbose=true; log_info=true;;
             -q|--quiet)    log_verbose=false; log_info=false;;
+            -c|--charts)   force_charts=$2; shift ;;
             --debug)       set -x;;
             @*)            e=${env_names[${1#@}]}; envs+=" $e" ;;
-            diff)          extra_cmd=diff ;;
+            d|diff)        extra_cmd=diff ;;
+            apply)         extra_cmd=apply ;;
             *)
                 if [[ ! -z ${env_names[$1]:-} ]]; then envs+=" ${env_names[$1]}"
                 elif [[ -f $1 ]]; then def_files+=" $1"
@@ -106,7 +108,7 @@ init_app_def() {
 render_env() {
     #render_charts=${helm_charts_for[$env]:-${helm_charts:-${charts}}}
     source $RENDER_ENV_DIR/render-env-${env}.def
-    render_charts=${helm_charts:-${charts}}
+    render_charts=${force_charts:-${helm_charts:-${charts}}}
     defdir=$(dirname $(readlink -f ${file}))
     if [[ -f $defdir/values-${appname}-${env}.yaml ]]; then
         info rendering ${appname}-${env} with charts ${render_charts}
@@ -133,6 +135,9 @@ render_helm() {
     if [[ ${extra_cmd:-} == diff ]]; then
         info diffing $dir
         kubectl diff --context $context -f $dir
+    elif [[ ${extra_cmd:-} == apply ]]; then
+        info applying $dir
+        kubectl apply --context $context -f $dir
     fi
 }
 

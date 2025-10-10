@@ -46,7 +46,6 @@ main() {
 
 verbose() { if ${log_verbose:-false}; then printf "%s " "${@}"; echo; fi }
 info()    { if ${log_info:-true};     then echo "${@}"; fi }
-run_verbose() { cmd=$1; shift; verbose "    $cmd" "${@}"; $cmd "${@}"; }
 
 parse_options() {
     def_files=""
@@ -58,6 +57,7 @@ parse_options() {
             -q|--quiet)    log_verbose=false; log_info=false;;
             --debug)       set -x;;
             @*)            e=${env_names[${1#@}]}; envs+=" $e" ;;
+            diff)          extra_cmd=diff ;;
             *)
                 if [[ ! -z ${env_names[$1]:-} ]]; then envs+=" ${env_names[$1]}"
                 elif [[ -f $1 ]]; then def_files+=" $1"
@@ -128,6 +128,10 @@ render_helm() {
         cmd="helm template $value_opts $release ${RENDER_CHART_DIR}/$ch"
         verbose "    $cmd"
         $cmd | split_into_files
+        if [[ ${extra_cmd:-} == diff ]]; then
+            info diffing
+            kubectl diff --context $context -f $dir
+        fi
     done
 }
 

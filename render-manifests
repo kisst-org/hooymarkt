@@ -31,7 +31,7 @@ fi
 main() {
     parse_options "${@}"
     for file in $def_files; do
-        verbose reading render-def ${file} for ${envs}
+        verbose reading render-def ${file} for ${envs} to $RENDER_OUTPUT_DIR
         init_app_def
         for env in $envs; do
             render_env
@@ -111,8 +111,8 @@ render_env() {
     render_charts=${force_charts:-${helm_charts:-${charts}}}
     defdir=$(dirname $(readlink -f ${file}))
     if [[ -f $defdir/values-${appname}-${env}.yaml ]]; then
-        info rendering ${appname}-${env} with charts ${render_charts}
-        dir=manifests/${env}/${appname}
+        info rendering ${appname}-${env} with charts ${render_charts} to $RENDER_OUTPUT_DIR
+        dir=$RENDER_OUTPUT_DIR/${env}/${appname}
         rm -rf $dir; mkdir -p $dir
         render_helm
     else

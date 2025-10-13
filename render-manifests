@@ -17,7 +17,8 @@ env_names[prd]=prd
 env_names[all]=all
 
 
-: ${RENDER_ROOT_DIR:=$(dirname $(readlink -f ${BASH_SOURCE[0]}))}
+#: ${RENDER_ROOT_DIR:=$(dirname $(readlink -f ${BASH_SOURCE[0]}))}
+: ${RENDER_ROOT_DIR:=.}
 : ${RENDER_ENV_DIR:=${RENDER_ROOT_DIR}/envs}
 : ${RENDER_CHART_DIR:=${RENDER_ROOT_DIR}/helm-charts}
 : ${RENDER_OUTPUT_DIR:=${RENDER_ROOT_DIR}/manifests}
@@ -123,7 +124,7 @@ render_env() {
 if_file_exists() { if [[ -f $1 ]]; then echo " ${2:-} $1"; else echo "" ; fi }
 render_helm() {
     release=$appname-$env # this is probably not really used with helm template
-    defdir=$(dirname $(readlink -f ${file}))
+    defdir=$(dirname ${file})
     value_opts="-f $RENDER_ENV_DIR/values-env-${env}.yaml"
     value_opts+=" -f $defdir/values-app-${appname}.yaml"
     value_opts+=" -f $defdir/values-${appname}-${env}.yaml"

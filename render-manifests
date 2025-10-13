@@ -90,21 +90,37 @@ EOF
 }
 
 render_files() {
-    for file in $def_files; do
-        verbose reading render-def ${file} for ${envs}
-        init_app_def
+    for f in $def_files; do
+        verbose reading render-def ${f} for ${envs}
         for env in $envs; do
-            render_env
+            render_env $f
         done
     done
 }
 
+
+basic_cleanup () {
+    verbose removing comments, rollme,
+    sed -i -e '/^ *#/d' -e '/rollme/d' $1/*.yaml $2/*.yaml
+    verbose fixing unneeded quotes
+    sed -i -e 's/: "\([a-zA-Z].*\)"$/: \1/' $1/*.yaml $2/*.yaml
+}
+
+pre_diff_cleanup() {
+    basic_cleanup $1 $2
+}
+
 compare() {
-    for file in $def_files; do
-        verbose comparing render-def ${file} for ${envs}
+    for f in $def_files; do
+        verbose comparing render-def ${f} for ${envs}
         for env in $envs; do
-            render_env .
-            render_env test
+            render_env $f .
+            render_env test/$f test
+            newdir=manifests/$env/$appname
+            olddir=test/manifests/$env/$appname
+            echo diffing $newdir $olddir
+            pre_diff_cleanup $newdir $olddir
+            diff -r $newdir $olddir
         done
     done
 }
@@ -131,10 +147,10 @@ init_vars() {
 }
 
 render_env() {
-    init_vars ${1:-.}
+    file=$1
+    init_vars ${2:-.}
     source ${env_dir}/render-env-${env}.def
-    #render_charts=${force_charts:-${helm_charts:-${charts}}}
-    render_charts=${helm_charts:-${charts}}
+    render_charts=${force_charts:-${helm_charts:-${charts}}}
     defdir=$(dirname $(readlink -f ${file}))
     if [[ -f $defdir/values-${appname}-${env}.yaml ]]; then
         info rendering ${appname}-${env} with charts ${render_charts} to $output_dir
@@ -169,6 +185,7 @@ render_helm() {
 
 split_into_files() {
     yq -s \"$dir/\"'+ (.kind | downcase) + "_" + .metadata.name + ".yaml"'
+    rm -f ${dir}/_.yaml
 }
 
 

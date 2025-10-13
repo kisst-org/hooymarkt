@@ -29,7 +29,6 @@ main() {
     : ${RENDER_CONFIG_FILE:=${RENDER_ROOT_DIR:-.}/render.config}
     read_config
     parse_options "${@}"
-    # init_vars
     $command
 }
 
@@ -91,11 +90,40 @@ EOF
 
 render_files() {
     for f in $def_files; do
+        read_app_def $f
         verbose reading render-def ${f} for ${envs}
         for env in $envs; do
-            render_env $f
+            render_def_file $f $env
         done
     done
+}
+
+merge_paths() {
+    local root=$1
+    local path=$2
+    echo $root/$path
+    return 0
+    if [[ $path == /* ]]; then
+        echo $path # absolute path
+        return 0
+    fi
+    while [[ $path = .* ]]; do
+        if [[ $path == ./* ]]; then
+            path=${path#./}
+        elif [[ $path == ./* ]]; then
+            path=${path#../}
+            root=$(dirname $root)
+        fi
+    done
+    if [[ $path == /* ]]; then path=${path#/}; fi
+    if [[ $root == */ ]]; then root=${root%/}; fi
+    echo $root/$path
+}
+
+init_relative_dirs() {
+    env_dir=$(merge_paths    ${1} ../../envs )
+    chart_dir=$(merge_paths  ${1} ../../helm-charts)
+    output_dir=$(merge_paths ${1} ../../manifests)
 }
 
 
@@ -114,19 +142,22 @@ compare() {
     for f in $def_files; do
         verbose comparing render-def ${f} for ${envs}
         for env in $envs; do
-            render_env $f .
-            render_env test/$f test
+            render_def_file $f $env
+            render_def_file test/$f $env
             newdir=manifests/$env/$appname
             olddir=test/manifests/$env/$appname
             echo diffing $newdir $olddir
             pre_diff_cleanup $newdir $olddir
             diff -r $newdir $olddir
+            #defdir=$(dirname  -f ${file})
+
         done
     done
 }
 
 
-init_app_def() {
+read_app_def() {
+    local file=$1
     # read the def file to determine all_envs and helm_charts
     unset helm_charts helm_chart_for all_envs
     declare -A helm_charts_for
@@ -137,21 +168,16 @@ init_app_def() {
     fi
 }
 
-init_vars() {
-    #: ${RENDER_ROOT_DIR:=$(dirname $(readlink -f ${BASH_SOURCE[0]}))}
-    root_dir=$1
-    env_dir=${root_dir}/envs
-    chart_dir=${root_dir}/helm-charts
-    output_dir=${root_dir}/manifests
-    init_app_def
-}
 
-render_env() {
+render_def_file() {
     file=$1
-    init_vars ${2:-.}
-    source ${env_dir}/render-env-${env}.def
+    env=$2
+    init_relative_dirs $(dirname ${file})
+
+    #source ${env_dir}/render-env-${env}.def
+    defdir=$(dirname ${file})
+
     render_charts=${force_charts:-${helm_charts:-${charts}}}
-    defdir=$(dirname $(readlink -f ${file}))
     if [[ -f $defdir/values-${appname}-${env}.yaml ]]; then
         info rendering ${appname}-${env} with charts ${render_charts} to $output_dir
         dir=$output_dir/${env}/${appname}

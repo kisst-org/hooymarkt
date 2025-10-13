@@ -9,35 +9,28 @@
 
 set -eu
 
-declare -A env_names
-env_names[t]=tst
-env_names[tst]=tst
-env_names[stg]=stg
-env_names[prd]=prd
-env_names[all]=all
 
+read_config() {
+    declare -A -g env_names
+    env_names[t]=tst
+    env_names[tst]=tst
+    env_names[stg]=stg
+    env_names[prd]=prd
+    env_names[all]=all
+    all_envs="tst stg prd"
+    command=render_files
+    if [[ -f ${RENDER_CONFIG_FILE} ]]; then
+        source ${RENDER_CONFIG_FILE}
+    fi
+}
 
-#: ${RENDER_ROOT_DIR:=$(dirname $(readlink -f ${BASH_SOURCE[0]}))}
-: ${RENDER_ROOT_DIR:=.}
-: ${RENDER_ENV_DIR:=${RENDER_ROOT_DIR}/envs}
-: ${RENDER_CHART_DIR:=${RENDER_ROOT_DIR}/helm-charts}
-: ${RENDER_OUTPUT_DIR:=${RENDER_ROOT_DIR}/manifests}
-: ${RENDER_CONFIG_FILE:=${RENDER_ROOT_DIR}/render.config}
-: ${RENDER_ALL_ENVS:="tst stg prd"}
-
-if [[ -f ${RENDER_CONFIG_FILE} ]]; then
-    source ${RENDER_CONFIG_FILE}
-fi
 
 main() {
+    : ${RENDER_CONFIG_FILE:=${RENDER_ROOT_DIR:-.}/render.config}
+    read_config
     parse_options "${@}"
-    for file in $def_files; do
-        verbose reading render-def ${file} for ${envs} to $RENDER_OUTPUT_DIR
-        init_app_def
-        for env in $envs; do
-            render_env
-        done
-    done
+    # init_vars
+    $command
 }
 
 verbose() { if ${log_verbose:-false}; then printf "%s " "${@}"; echo; fi }
@@ -54,8 +47,10 @@ parse_options() {
             -c|--charts)   force_charts=$2; shift ;;
             --debug)       set -x;;
             @*)            e=${env_names[${1#@}]}; envs+=" $e" ;;
+            -e|--env)      envs+=" $2"; shift ;;
             d|diff)        extra_cmd=diff ;;
             apply)         extra_cmd=apply ;;
+            comp|compare)  command=compare;;
             *)
                 if [[ ! -z ${env_names[$1]:-} ]]; then envs+=" ${env_names[$1]}"
                 elif [[ -f $1 ]]; then def_files+=" $1"
@@ -94,6 +89,26 @@ Can either be a file, that will be sourced, or a directory that contains exactly
 EOF
 }
 
+render_files() {
+    for file in $def_files; do
+        verbose reading render-def ${file} for ${envs}
+        init_app_def
+        for env in $envs; do
+            render_env
+        done
+    done
+}
+
+compare() {
+    for file in $def_files; do
+        verbose comparing render-def ${file} for ${envs}
+        for env in $envs; do
+            render_env .
+            render_env test
+        done
+    done
+}
+
 
 init_app_def() {
     # read the def file to determine all_envs and helm_charts
@@ -106,14 +121,24 @@ init_app_def() {
     fi
 }
 
+init_vars() {
+    #: ${RENDER_ROOT_DIR:=$(dirname $(readlink -f ${BASH_SOURCE[0]}))}
+    root_dir=$1
+    env_dir=${root_dir}/envs
+    chart_dir=${root_dir}/helm-charts
+    output_dir=${root_dir}/manifests
+    init_app_def
+}
+
 render_env() {
-    #render_charts=${helm_charts_for[$env]:-${helm_charts:-${charts}}}
-    source $RENDER_ENV_DIR/render-env-${env}.def
-    render_charts=${force_charts:-${helm_charts:-${charts}}}
+    init_vars ${1:-.}
+    source ${env_dir}/render-env-${env}.def
+    #render_charts=${force_charts:-${helm_charts:-${charts}}}
+    render_charts=${helm_charts:-${charts}}
     defdir=$(dirname $(readlink -f ${file}))
     if [[ -f $defdir/values-${appname}-${env}.yaml ]]; then
-        info rendering ${appname}-${env} with charts ${render_charts} to $RENDER_OUTPUT_DIR
-        dir=$RENDER_OUTPUT_DIR/${env}/${appname}
+        info rendering ${appname}-${env} with charts ${render_charts} to $output_dir
+        dir=$output_dir/${env}/${appname}
         rm -rf $dir; mkdir -p $dir
         render_helm
     else
@@ -125,11 +150,11 @@ if_file_exists() { if [[ -f $1 ]]; then echo " ${2:-} $1"; else echo "" ; fi }
 render_helm() {
     release=$appname-$env # this is probably not really used with helm template
     defdir=$(dirname ${file})
-    value_opts="-f $RENDER_ENV_DIR/values-env-${env}.yaml"
+    value_opts="-f ${env_dir}/values-env-${env}.yaml"
     value_opts+=" -f $defdir/values-app-${appname}.yaml"
     value_opts+=" -f $defdir/values-${appname}-${env}.yaml"
     for ch in $render_charts; do
-        cmd="helm template $value_opts $release ${RENDER_CHART_DIR}/$ch"
+        cmd="helm template $value_opts $release ${chart_dir}/$ch"
         verbose "    $cmd"
         $cmd | split_into_files
     done

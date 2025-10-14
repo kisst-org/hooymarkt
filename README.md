@@ -23,21 +23,23 @@ It can be run with the following options:
 render-manifests [options] [environment...] <render-def>...
 
 Options:
-  -h|--help        show this help
-  -v|--verbose     give more output
-  -q|--quiet       no output
-  -d|--diff        run `kubectl diff` with the rendered manifests
-  -a|--apply       run `kubectl apply` with the rendered manifests
-  -c|--commit      run `git commit` (--pull is implied)
-  -p|--pull        run `git pull` before starting to render, to avoid merge conflicts
-  -o|--output-dir  the directory where manifests will be rendered to
+  -h|--help     show this help
+  -v|--verbose  give more output
+  -q|--quiet    no output
+  -e|--env <e>  render environment <e>
+  --env=<e>     render environment <e> (can be used in alias)
+  --diff        run 'kubectl diff' with the rendered manifests
+  --apply       run 'kubectl apply' with the rendered manifests
+  --compare     compare to same appname in other directory
+  -c|--commit   TODO: run 'git commit' (--pull is implied)
+  -p|--pull     TODO: run 'git pull' before starting to render, to avoid merge conflicts
 
 Environments:
-It is possible to specify an environment as follows `@lab`.
-Shortcuts e.g. `@l` and even just `l` or `lab` are planned
+It is possible to specify an environment as follows '@lab'.
+Shortcuts e.g. '@l' and even just 'l' or 'lab' are planned
 
 Render Definitions:
-Can either be a file, that will be sourced, or a directory that contains exactly 1 file with a name `render-*.def`.
+Can either be a file, that will be sourced, or a directory that contains exactly 1 file with a name 'render*.def'.
 ```
 
 # Installation

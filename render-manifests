@@ -12,7 +12,7 @@ set -eu
 
 read_config() {
     declare -A -g aliases
-    declare -A -g kubectl_context
+    declare -A -g kubectl_options
     all_envs="tst stg prd"
     command=render_files
     if [[ -f ${RENDER_CONFIG_FILE} ]]; then
@@ -205,10 +205,10 @@ render_helm() {
     done
     if [[ ${extra_cmd:-} == diff ]]; then
         info diffing $dir
-        kubectl diff --context ${kubectl_context[$env]} -f $dir
+        kubectl diff ${kubectl_options[$env]} -f $dir
     elif [[ ${extra_cmd:-} == apply ]]; then
         info applying $dir
-        kubectl apply --context ${kubectl_context[$env]} -f $dir
+        kubectl apply ${kubectl_options[$env]} -f $dir
     fi
 }
 

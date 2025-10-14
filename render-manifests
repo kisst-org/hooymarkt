@@ -11,13 +11,8 @@ set -eu
 
 
 read_config() {
-    declare -A -g env_names
+    declare -A -g aliases
     declare -A -g kubectl_context
-    env_names[t]=tst
-    env_names[tst]=tst
-    env_names[stg]=stg
-    env_names[prd]=prd
-    env_names[all]=all
     all_envs="tst stg prd"
     command=render_files
     if [[ -f ${RENDER_CONFIG_FILE} ]]; then
@@ -40,21 +35,28 @@ parse_options() {
     def_files=""
     envs=""
     while [ ! $# -eq 0 ]; do
-        case $1 in
+        arg=$1
+        if [[ ${aliases[$arg]:-none} != none ]]; then
+            arg=${aliases[$arg]}
+        fi
+        case $arg in
             -h|--help)     show_help; exit 0;;
             -v|--verbose)  log_verbose=true; log_info=true;;
             -q|--quiet)    log_verbose=false; log_info=false;;
             -c|--charts)   force_charts=$2; shift ;;
             --debug)       set -x;;
-            @*)            e=${env_names[${1#@}]}; envs+=" $e" ;;
+            --env=*)       envs+=" ${arg#--env=}"; shift ;;
             -e|--env)      envs+=" $2"; shift ;;
-            d|diff)        extra_cmd=diff ;;
-            apply)         extra_cmd=apply ;;
-            comp|compare)  command=compare;;
+            --diff)        extra_cmd=diff;;
+            --apply)       extra_cmd=apply;;
+            --compare)     command=compare;;
             *)
-                if [[ ! -z ${env_names[$1]:-} ]]; then envs+=" ${env_names[$1]}"
-                elif [[ -f $1 ]]; then def_files+=" $1"
-                elif [[ -d $1 ]]; then def_files+=" $1/render-app-*.def"
+                if [[ -f ${arg} ]]; then def_files+=" ${arg}"
+                elif [[ -d ${arg} ]]; then def_files+=" ${arg}/render*.def"
+                else
+                    echo unknown argument ${arg}, should be a file or directory with render*.def file
+                    show_help
+                    exit 1
                 fi
         esac
         shift
@@ -71,14 +73,14 @@ show_help() { cat <<EOF
 render-manifests [options] [environment...] <render-def>...
 
 Options:
-  -h|--help        show this help
-  -v|--verbose     give more output
-  -q|--quiet       no output
-  -d|--diff        run 'kubectl diff' with the rendered manifests
-  -a|--apply       run 'kubectl apply' with the rendered manifests
+  -h|--help     show this help
+  -v|--verbose  give more output
+  -q|--quiet    no output
+  --diff        run 'kubectl diff' with the rendered manifests
+  --apply       run 'kubectl apply' with the rendered manifests
+  --compare     compare to other directory
   -c|--commit      run 'git commit' (--pull is implied)
   -p|--pull        run 'git pull' before starting to render, to avoid merge conflicts
-  -o|--output-dir  the directory where manifests will be rendered to
 
 Environments:
 It is possible to specify an environment as follows '@lab'.

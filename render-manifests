@@ -100,32 +100,12 @@ render_files() {
     done
 }
 
-merge_paths() {
-    local root=$1
-    local path=$2
-    echo $root/$path
-    return 0
-    if [[ $path == /* ]]; then
-        echo $path # absolute path
-        return 0
-    fi
-    while [[ $path = .* ]]; do
-        if [[ $path == ./* ]]; then
-            path=${path#./}
-        elif [[ $path == ./* ]]; then
-            path=${path#../}
-            root=$(dirname $root)
-        fi
-    done
-    if [[ $path == /* ]]; then path=${path#/}; fi
-    if [[ $root == */ ]]; then root=${root%/}; fi
-    echo $root/$path
-}
+dirname2() { dirname $(dirname $1); }
 
 init_relative_dirs() {
-    env_dir=$(merge_paths    ${1} ../../envs )
-    chart_dir=$(merge_paths  ${1} ../../helm-charts)
-    output_dir=$(merge_paths ${1} ../../manifests)
+    env_dir=$(dirname2    ${1})/envs
+    chart_dir=$(dirname2  ${1})/helm-charts
+    output_dir=$(dirname2 ${1})/manifests
 }
 
 

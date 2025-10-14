@@ -145,10 +145,12 @@ compare() {
     for f in $def_files; do
         verbose comparing render-def ${f} for ${envs}
         for env in $envs; do
+            read_app_def $f
             render_def_file $f $env
-            render_def_file test/$f $env
             newdir=manifests/$env/$appname
-            olddir=test/manifests/$env/$appname
+            read_app_def ${RENDER_COMPARE_DIR}/$f
+            render_def_file ${RENDER_COMPARE_DIR}/$f $env
+            olddir=${RENDER_COMPARE_DIR}/manifests/$env/$appname
             echo diffing $newdir $olddir
             pre_diff_cleanup $newdir $olddir
             diff -r $newdir $olddir

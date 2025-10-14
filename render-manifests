@@ -13,7 +13,6 @@ set -eu
 read_config() {
     declare -A -g aliases
     declare -A -g kubectl_options
-    all_envs="tst stg prd"
     command=render_files
     if [[ -f ${RENDER_CONFIG_FILE} ]]; then
         source ${RENDER_CONFIG_FILE}
@@ -45,7 +44,7 @@ parse_options() {
             -q|--quiet)    log_verbose=false; log_info=false;;
             -c|--charts)   force_charts=$2; shift ;;
             --debug)       set -x;;
-            --env=*)       envs+=" ${arg#--env=}"; shift ;;
+            --env=*)       envs+=" ${arg#--env=}";;
             -e|--env)      envs+=" $2"; shift ;;
             --diff)        extra_cmd=diff;;
             --apply)       extra_cmd=apply;;
@@ -163,14 +162,10 @@ compare() {
 
 read_app_def() {
     local file=$1
-    # read the def file to determine all_envs and helm_charts
-    unset helm_charts helm_chart_for all_envs
+    # read the def file to determine  helm_charts
+    unset helm_charts helm_chart_for
     declare -A helm_charts_for
     source ${file}
-    if [[ $envs == *all* ]]; then
-        # all_envs might be different for each application
-        envs=${all_envs:-${RENDER_ALL_ENVS}}
-    fi
 }
 
 

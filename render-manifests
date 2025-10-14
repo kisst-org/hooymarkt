@@ -12,6 +12,7 @@ set -eu
 
 read_config() {
     declare -A -g env_names
+    declare -A -g kubectl_context
     env_names[t]=tst
     env_names[tst]=tst
     env_names[stg]=stg
@@ -202,10 +203,10 @@ render_helm() {
     done
     if [[ ${extra_cmd:-} == diff ]]; then
         info diffing $dir
-        kubectl diff --context $context -f $dir
+        kubectl diff --context ${kubectl_context[$env]} -f $dir
     elif [[ ${extra_cmd:-} == apply ]]; then
         info applying $dir
-        kubectl apply --context $context -f $dir
+        kubectl apply --context ${kubectl_context[$env]} -f $dir
     fi
 }
 

@@ -57,7 +57,7 @@ run_actions() {
     if $skip; then
         info skipping $appname $env
     else
-        if [[ ! -z ${updates} ]]; then $run_update_func; fi
+        if [[ ! -z ${updates:-} ]]; then $run_update_func; fi
         for action in "${@}" ; do
             info running $action for ${env} ${appname} to ${output_dir}
             verbose running ${action_funcs[$action]}
@@ -73,8 +73,8 @@ verbose_cmd() {
     cmd=$1; shift
     $cmd "${@}"
 }
-get_rhs() { echo ${1/*([^=])=/}; } # remove the rhs (right hand side) lhs=rhs
-
+get_lhs() { echo ${1/=*([^=])/}; }  # get the lhs (left hand side) from lhs=rhs
+get_rhs() { echo ${1/*([^=])=/}; }  # get the rhs (right hand side) from lhs=rhs
 
 parse_options() {
     def_files=""
@@ -83,8 +83,15 @@ parse_options() {
     declare -ag updates=()
     while [ ! $# -eq 0 ]; do
         arg=$1
-        if [[ ${aliases[$arg]:-none} != none ]]; then
-            arg=${aliases[$arg]}
+        lhs=$(get_lhs $arg)
+        local al=${aliases[$lhs]:-none}
+        if [[ $al != none ]]; then
+            rhs=$(get_rhs $arg)
+            if [[ -z $rhs ]]; then
+                arg="$al"
+            else
+                arg=$(printf $al $rhs);
+            fi
         fi
         case $arg in
             -h|--help|help) main_command=show_help;;
@@ -162,14 +169,12 @@ init_generic() {
 
 run_diff() {
     info diffing $output_dir
-    verbose kubectl diff ${kubectl_options[$env]} -f $output_dir
-    kubectl diff ${kubectl_options[$env]} -f $output_dir || true
+    verbose_cmd kubectl diff ${kubectl_options[$env]} -f $output_dir || true
 }
 
 run_apply() {
     info applying $output_dir
-    verbose kubectl apply ${kubectl_options[$env]} -f $output_dir
-    kubectl apply ${kubectl_options[$env]} -f $output_dir
+    verbose_cmd kubectl apply ${kubectl_options[$env]} -f $output_dir
 }
 
 
@@ -180,15 +185,15 @@ run_compare() {
     olddir=$output_dir
     info diffing $newdir $olddir
     pre_diff_cleanup $newdir $olddir
-    diff -r $newdir $olddir || true
+    verbose_cmd diff -r $newdir $olddir || true
 }
 
 basic_cleanup () {
     verbose removing comments, rollme,
-    sed -i -e '/^ *#/d' -e '/rollme/d' $1/*.yaml $2/*.yaml
+    verbose_cmd sed -i -e '/^ *#/d' -e '/rollme/d' $1/*.yaml $2/*.yaml
     verbose fixing unneeded quotes
-    sed -i -e 's/: "\([a-zA-Z].*\)"$/: \1/' $1/*.yaml $2/*.yaml
-    sed -i -e 's/: "\([a-zA-Z0-9].*[a-zA-Z]\)"$/: \1/' $1/*.yaml $2/*.yaml
+    verbose_cmd sed -i -e 's/: "\([a-zA-Z].*\)"$/: \1/' $1/*.yaml $2/*.yaml
+    verbose_cmd sed -i -e 's/: "\([a-zA-Z0-9].*[a-zA-Z]\)"$/: \1/' $1/*.yaml $2/*.yaml
 }
 
 pre_diff_cleanup() {
@@ -235,8 +240,9 @@ render_helm() {
     for f in ${helm_value_files[@]}; do helm_command+=" -f ${f}"; done
     helm_command+=" $helm_release"
     for ch in $helm_charts; do
-        verbose "    $helm_command $helm_chart_dir/$ch"
-        $helm_command $helm_chart_dir/$ch| split_into_files
+        local cmd="$helm_command $helm_chart_dir/$ch"
+        verbose "    $cmd"
+        $cmd | split_into_files
     done
 }
 

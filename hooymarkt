@@ -57,6 +57,7 @@ run_actions() {
     if $skip; then
         info skipping $appname $env
     else
+        if [[ ! -z ${updates} ]]; then $run_update_func; fi
         for action in "${@}" ; do
             info running $action for ${env} ${appname} to ${output_dir}
             verbose running ${action_funcs[$action]}
@@ -67,12 +68,19 @@ run_actions() {
 
 verbose() { if ${log_verbose:-false}; then printf "%s " "${@}"; echo; fi }
 info()    { if ${log_info:-true};     then echo "${@}"; fi }
+verbose_cmd() {
+    if ${log_verbose:-false}; then printf "    "; echo "${@}"; fi
+    cmd=$1; shift
+    $cmd "${@}"
+}
 get_rhs() { echo ${1/*([^=])=/}; } # remove the rhs (right hand side) lhs=rhs
+
 
 parse_options() {
     def_files=""
     envs=""
     actions=render
+    declare -ag updates=()
     while [ ! $# -eq 0 ]; do
         arg=$1
         if [[ ${aliases[$arg]:-none} != none ]]; then
@@ -85,6 +93,7 @@ parse_options() {
             --debug)        set -x;;
             --env=*)        envs+=" $(get_rhs $arg)";;
             -e|--env)       envs+=" $2"; shift ;;
+            update:*)       updates+=(${arg#update:}) ;;
             diff)           actions+=" diff";;
             apply)          actions+=" apply";;
             compare)        actions="compare";; # will render
@@ -136,6 +145,10 @@ EOF
 ################################################
 # generic functions
 
+run_update_not_supported() {
+    echo no update support for $file
+}
+
 init_generic() {
     action_funcs[diff]=run_diff
     action_funcs[apply]=run_apply
@@ -144,6 +157,7 @@ init_generic() {
     manifest_dir=${base_dir}/manifests
     output_dir=${manifest_dir}/${env}/${appname}
     skip=false
+    run_update_func=run_update_not_supported
 }
 
 run_diff() {
@@ -189,6 +203,13 @@ split_into_files() {
 ################################################
 # helm module
 
+update_last_helm_values_file() {
+    local f=${helm_value_files[-1]}
+    for u in ${updates[@]}; do
+        verbose_cmd yq -i $u $f
+    done
+}
+
 init_helm() {
     local file_dir=$(dirname ${rendef_file})
     base_dir=$(dirname $(dirname ${file_dir}))
@@ -204,6 +225,7 @@ init_helm() {
     helm_value_files+=($file_dir/values-app-${appname}.yaml)
     helm_value_files+=($file_dir/values-${appname}-${env}.yaml)
     if [[ ! -f $file_dir/values-${appname}-${env}.yaml ]]; then skip=true; fi
+    run_update_func=update_last_helm_values_file
 }
 
 

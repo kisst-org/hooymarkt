@@ -13,10 +13,12 @@ set -eu
 read_config() {
     declare -A -g aliases
     declare -A -g kubectl_options
-    command=render_files
+    declare -A -g action_funcs
+    main_command=forall_apps_envs
     if [[ -f ${RENDER_CONFIG_FILE} ]]; then
         source ${RENDER_CONFIG_FILE}
     fi
+    default_renderer=${RENDER_DEFAULT_RENDERER:-helm}
 }
 
 
@@ -24,7 +26,42 @@ main() {
     : ${RENDER_CONFIG_FILE:=${RENDER_ROOT_DIR:-.}/render.config}
     read_config
     parse_options "${@}"
-    $command
+    $main_command
+}
+
+forall_apps_envs() {
+    for f in $def_files; do
+        for env in $envs; do
+            run_actions $f $actions
+        done
+    done
+}
+
+# The same, but do this per env first
+forall_envs_apps() {
+    for env in $envs; do
+        for f in $def_files; do
+            run_actions $f $actions
+        done
+    done
+}
+
+run_actions() {
+    local file=$1
+    shift
+    verbose reading render-def ${file} for ${envs}
+    renderer=$default_renderer
+    source ${file}
+    init_${renderer}
+    if $skip; then
+        info skipping $appname $env
+    else
+        info running $actions for $appname $env
+    fi
+    for action in "${@}" ; do
+        verbose running ${action_funcs[$action]}
+        ${action_funcs[$action]}
+    done
 }
 
 verbose() { if ${log_verbose:-false}; then printf "%s " "${@}"; echo; fi }
@@ -33,27 +70,28 @@ info()    { if ${log_info:-true};     then echo "${@}"; fi }
 parse_options() {
     def_files=""
     envs=""
+    actions=render
     while [ ! $# -eq 0 ]; do
         arg=$1
         if [[ ${aliases[$arg]:-none} != none ]]; then
             arg=${aliases[$arg]}
         fi
         case $arg in
-            -h|--help)     show_help; exit 0;;
-            -v|--verbose)  log_verbose=true; log_info=true;;
-            -q|--quiet)    log_verbose=false; log_info=false;;
-            -c|--charts)   force_charts=$2; shift ;;
-            --debug)       set -x;;
-            --env=*)       envs+=" ${arg#--env=}";;
-            -e|--env)      envs+=" $2"; shift ;;
-            --diff)        extra_cmd=diff;;
-            --apply)       extra_cmd=apply;;
-            --compare)     command=compare;;
+            -h|--help|help) main_command=show_help;;
+            -v|--verbose)   log_verbose=true; log_info=true;;
+            -q|--quiet)     log_verbose=false; log_info=false;;
+            -c|--charts)    force_charts=$2; shift ;;
+            --debug)        set -x;;
+            --env=*)        envs+=" ${arg#--env=}";; # usefull in aliases
+            -e|--env)       envs+=" $2"; shift ;;
+            diff)           actions+=" diff";;
+            apply)          actions+=" apply";;
+            compare)        actions="compare";; # will render
             *)
                 if [[ -f ${arg} ]]; then def_files+=" ${arg}"
                 elif [[ -d ${arg} ]]; then def_files+=" ${arg}/render*.def"
                 else
-                    echo unknown argument ${arg}, should be a file or directory with render*.def file
+                    echo unknown argument ${arg}, should be a command, file or directory with render*.def file
                     show_help
                     exit 1
                 fi
@@ -64,7 +102,6 @@ parse_options() {
     # better test that also works with one or more spaces, might be:
     #   if [[ ${envs:-} =~ '^ *$' ]]; then ...
     # see https://unix.stackexchange.com/questions/146942/how-can-i-test-if-a-variable-is-empty-or-contains-only-spaces
-
 }
 
 
@@ -77,11 +114,11 @@ Options:
   -q|--quiet    no output
   -e|--env <e>  render environment <e>
   --env=<e>     render environment <e> (can be used in alias)
-  --diff        run 'kubectl diff' with the rendered manifests
-  --apply       run 'kubectl apply' with the rendered manifests
-  --compare     compare to same appname in other directory
-  -c|--commit   TODO: run 'git commit' (--pull is implied)
-  -p|--pull     TODO: run 'git pull' before starting to render, to avoid merge conflicts
+  diff          run 'kubectl diff' with the rendered manifests
+  apply         run 'kubectl apply' with the rendered manifests
+  compare       compare to same appname in other directory
+  commit        TODO: run 'git commit' (pull is implied)
+  pull          TODO: run 'git pull' before starting to render, to avoid merge conflicts
 
 Environments:
 It is possible to specify an environment as follows '@lab'.
@@ -92,24 +129,41 @@ Can either be a file, that will be sourced, or a directory that contains exactly
 EOF
 }
 
-render_files() {
-    for f in $def_files; do
-        read_app_def $f
-        verbose reading render-def ${f} for ${envs}
-        for env in $envs; do
-            render_def_file $f $env
-        done
-    done
+################################################
+# generic functions
+
+init_generic() {
+    action_funcs[diff]=run_diff
+    action_funcs[apply]=run_apply
+    action_funcs[compare]=run_compare
+    env_dir=${base_dir}/envs
+    manifest_dir=${base_dir}/manifests
+    output_dir=${manifest_dir}/${env}/${appname}
+    skip=false
 }
 
-dirname2() { dirname $(dirname $1); }
-
-init_relative_dirs() {
-    env_dir=$(dirname2    ${1})/envs
-    chart_dir=$(dirname2  ${1})/helm-charts
-    output_dir=$(dirname2 ${1})/manifests
+run_diff() {
+    info diffing $output_dir
+    verbose kubectl diff ${kubectl_options[$env]} -f $output_dir
+    kubectl diff ${kubectl_options[$env]} -f $output_dir
 }
 
+run_apply() {
+    info applying $output_dir
+    verbose kubectl apply ${kubectl_options[$env]} -f $output_dir
+    kubectl apply ${kubectl_options[$env]} -f $output_dir
+}
+
+
+run_compare() {
+    run_actions $file render
+    newdir=$output_dir
+    run_actions ${compare_dir}/$file render
+    olddir=$output_dir
+    echo diffing $newdir $olddir
+    pre_diff_cleanup $newdir $olddir
+    diff -r $newdir $olddir
+}
 
 basic_cleanup () {
     verbose removing comments, rollme,
@@ -122,79 +176,42 @@ pre_diff_cleanup() {
     basic_cleanup $1 $2
 }
 
-compare() {
-    for f in $def_files; do
-        verbose comparing render-def ${f} for ${envs}
-        for env in $envs; do
-            read_app_def $f
-            render_def_file $f $env
-            newdir=manifests/$env/$appname
-            read_app_def ${RENDER_COMPARE_DIR}/$f
-            render_def_file ${RENDER_COMPARE_DIR}/$f $env
-            olddir=${RENDER_COMPARE_DIR}/manifests/$env/$appname
-            echo diffing $newdir $olddir
-            pre_diff_cleanup $newdir $olddir
-            diff -r $newdir $olddir
-            #defdir=$(dirname  -f ${file})
-
-        done
-    done
-}
-
-
-read_app_def() {
-    local file=$1
-    # read the def file to determine  helm_charts
-    unset helm_charts helm_chart_for
-    declare -A helm_charts_for
-    source ${file}
-}
-
-
-render_def_file() {
-    file=$1
-    env=$2
-    init_relative_dirs $(dirname ${file})
-
-    #source ${env_dir}/render-env-${env}.def
-    defdir=$(dirname ${file})
-
-    render_charts=${force_charts:-${helm_charts:-${charts}}}
-    if [[ -f $defdir/values-${appname}-${env}.yaml ]]; then
-        info rendering ${appname}-${env} with charts ${render_charts} to $output_dir
-        dir=$output_dir/${env}/${appname}
-        rm -rf $dir; mkdir -p $dir
-        render_helm
-    else
-        info skipping ${appname}-${env}
-    fi
-}
-
-if_file_exists() { if [[ -f $1 ]]; then echo " ${2:-} $1"; else echo "" ; fi }
-render_helm() {
-    release=$appname-$env # this is probably not really used with helm template
-    defdir=$(dirname ${file})
-    value_opts="-f ${env_dir}/values-env-${env}.yaml"
-    value_opts+=" -f $defdir/values-app-${appname}.yaml"
-    value_opts+=" -f $defdir/values-${appname}-${env}.yaml"
-    for ch in $render_charts; do
-        cmd="helm template $value_opts $release ${chart_dir}/$ch"
-        verbose "    $cmd"
-        $cmd | split_into_files
-    done
-    if [[ ${extra_cmd:-} == diff ]]; then
-        info diffing $dir
-        kubectl diff ${kubectl_options[$env]} -f $dir
-    elif [[ ${extra_cmd:-} == apply ]]; then
-        info applying $dir
-        kubectl apply ${kubectl_options[$env]} -f $dir
-    fi
-}
-
 split_into_files() {
-    yq -s \"$dir/\"'+ (.kind | downcase) + "_" + .metadata.name + ".yaml"'
-    rm -f ${dir}/_.yaml
+    yq -s \"$output_dir/\"'+ (.kind | downcase) + "_" + .metadata.name + ".yaml"'
+    rm -f ${output_dir}/_.yaml
 }
+
+################################################
+# helm module
+
+init_helm() {
+    file_dir=$(dirname ${file})
+    base_dir=$(dirname $(dirname ${file_dir}))
+    unset helm_charts
+    init_generic
+    action_funcs[render]=render_helm
+    : ${helm_charts:=$charts}
+
+    helm_release=$appname # this is probably not really used with helm template
+    helm_command="helm template"
+    helm_chart_dir=${base_dir}/helm-charts
+    helm_value_files="${env_dir}/values-env-${env}.yaml"
+    helm_value_files+=" $file_dir/values-app-${appname}.yaml"
+    helm_value_files+=" $file_dir/values-${appname}-${env}.yaml"
+    if [[ ! -f $file_dir/values-${appname}-${env}.yaml ]]; then skip=true; fi
+}
+
+
+render_helm() {
+    #opts=${helm_opts:-}
+    for f in $helm_value_files; do helm_command+=" -f ${f}"; done
+    helm_command+=" $helm_release"
+    for ch in $helm_charts; do
+        verbose "    $helm_command $helm_chart_dir/$ch"
+        $helm_command $helm_chart_dir/$ch| split_into_files
+    done
+}
+
 
 
 main "${@}"

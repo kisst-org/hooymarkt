@@ -98,8 +98,7 @@ parse_options() {
             -v|--verbose)   log_verbose=true; log_info=true;;
             -q|--quiet)     log_verbose=false; log_info=false;;
             --debug)        set -x;;
-            --env=*)        envs+=" $(get_rhs $arg)";;
-            -e|--env)       envs+=" $2"; shift ;;
+            e=*|env=*)      envs+=" $(get_rhs $arg)";;
             update:*)       updates+=(${arg#update:}) ;;
             diff)           actions+=" diff";;
             apply)          actions+=" apply";;

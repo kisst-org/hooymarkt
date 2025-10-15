@@ -20,26 +20,27 @@ The list of environments can be configured in the file `markisst.config`
 It can be run with the following options:
 
 ```
-hooymarkt [options] [environment...] <render-def>...
+hooymarkt [ option | command/alias | render-def ]...
 
 Options:
   -h|--help     show this help
   -v|--verbose  give more output
   -q|--quiet    no output
-  -e|--env <e>  render environment <e>
-  --env=<e>     render environment <e> (can be used in alias)
-  --diff        run 'kubectl diff' with the rendered manifests
-  --apply       run 'kubectl apply' with the rendered manifests
-  --compare     compare to same appname in other directory
-  -c|--commit   TODO: run 'git commit' (--pull is implied)
-  -p|--pull     TODO: run 'git pull' before starting to render, to avoid merge conflicts
-
-Environments:
-It is possible to specify an environment as follows '@lab'.
-Shortcuts e.g. '@l' and even just 'l' or 'lab' are planned
+  -e|--env=<e>  add environment <e> to render
+Commands
+  help          show_help
+  diff          run 'kubectl diff' with the rendered manifests
+  apply         run 'kubectl apply' with the rendered manifests
+  compare       compare to same appname in other directory
+  update:<expr> for helm update the final values with yq expression
+  commit        TODO: run 'git commit' (pull is implied)
+  pull          TODO: run 'git pull' before starting to render, to avoid merge conflicts
 
 Render Definitions:
 Can either be a file, that will be sourced, or a directory that contains exactly 1 file with a name 'render*.def'.
+
+Aliases:
+  User defined
 ```
 
 # Installation

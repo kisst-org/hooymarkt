@@ -98,7 +98,7 @@ parse_options() {
             -v|--verbose)   log_verbose=true; log_info=true;;
             -q|--quiet)     log_verbose=false; log_info=false;;
             --debug)        set -x;;
-            e=*|env=*)      envs+=" $(get_rhs $arg)";;
+            -e=*|--env=*)   envs+=" $(get_rhs $arg)";;
             update:*)       updates+=(${arg#update:}) ;;
             diff)           actions+=" diff";;
             apply)          actions+=" apply";;
@@ -123,29 +123,30 @@ parse_options() {
 
 
 show_help() { cat <<EOF
-$(filename ${scriptname}) [ option | command/action | alias | render-def ]...
+$(basename ${script_name}) [ option | command/alias | render-def ]...
 
 Options:
   -h|--help     show this help
   -v|--verbose  give more output
   -q|--quiet    no output
-  -e|--env <e>  render environment <e>
-  --env=<e>     render environment <e> (can be used in alias)
-Commands/actions
+  -e|--env=<e>  add environment <e> to render
+Commands
   help          show_help
   diff          run 'kubectl diff' with the rendered manifests
   apply         run 'kubectl apply' with the rendered manifests
   compare       compare to same appname in other directory
+  update:<expr> for helm update the final values with yq expression
   commit        TODO: run 'git commit' (pull is implied)
   pull          TODO: run 'git pull' before starting to render, to avoid merge conflicts
 
-Aliases:
-It is possible to configure aliases specify an environment as follows '@lab'.
-Shortcuts e.g. '@l' and even just 'l' or 'lab' are planned
-
 Render Definitions:
 Can either be a file, that will be sourced, or a directory that contains exactly 1 file with a name 'render*.def'.
+
+Aliases:
 EOF
+for key in $(printf "%s\n" ${!aliases[@]} | sort); do
+    printf "  %-13s %s\n" $key "${aliases[$key]}"
+done
 }
 
 ################################################

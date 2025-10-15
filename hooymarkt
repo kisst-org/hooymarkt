@@ -50,7 +50,7 @@ forall_envs_apps() {
 run_actions() {
     local rendef_file=$1
     shift
-    verbose reading render-def ${rendef_file} for ${envs}
+    verbose reading render-def ${rendef_file} for ${env}
     renderer=$default_renderer
     source ${rendef_file}
     init_${renderer}
@@ -58,7 +58,7 @@ run_actions() {
         info skipping $appname $env
     else
         for action in "${@}" ; do
-            info running $action for ${output_dir}
+            info running $action for ${env} ${appname} to ${output_dir}
             verbose running ${action_funcs[$action]}
             ${action_funcs[$action]}
         done
@@ -195,7 +195,7 @@ init_helm() {
     unset helm_charts
     init_generic
     action_funcs[render]=render_helm
-    : ${helm_charts:=$charts}
+    : ${helm_charts:=${charts:-}}
 
     helm_release=$appname # this is probably not really used with helm template
     helm_command="helm template"

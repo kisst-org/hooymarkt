@@ -8,7 +8,7 @@
 #   curl -OL https://raw.githubusercontent.com/kisst-org/markisst/refs/heads/main/render-manifests && chmod 755 render-manifests
 
 set -eu
-
+script_name="${0}"
 
 read_config() {
     declare -A -g aliases
@@ -57,11 +57,11 @@ run_actions() {
         info skipping $appname $env
     else
         info running $actions for $appname $env
+        for action in "${@}" ; do
+            verbose running ${action_funcs[$action]}
+            ${action_funcs[$action]}
+        done
     fi
-    for action in "${@}" ; do
-        verbose running ${action_funcs[$action]}
-        ${action_funcs[$action]}
-    done
 }
 
 verbose() { if ${log_verbose:-false}; then printf "%s " "${@}"; echo; fi }
@@ -80,7 +80,6 @@ parse_options() {
             -h|--help|help) main_command=show_help;;
             -v|--verbose)   log_verbose=true; log_info=true;;
             -q|--quiet)     log_verbose=false; log_info=false;;
-            -c|--charts)    force_charts=$2; shift ;;
             --debug)        set -x;;
             --env=*)        envs+=" ${arg#--env=}";; # usefull in aliases
             -e|--env)       envs+=" $2"; shift ;;
@@ -106,7 +105,7 @@ parse_options() {
 
 
 show_help() { cat <<EOF
-render-manifests [options] [environment...] <render-def>...
+$(filename ${scriptname}) [ option | command/action | alias | render-def ]...
 
 Options:
   -h|--help     show this help
@@ -114,14 +113,16 @@ Options:
   -q|--quiet    no output
   -e|--env <e>  render environment <e>
   --env=<e>     render environment <e> (can be used in alias)
+Commands/actions
+  help          show_help
   diff          run 'kubectl diff' with the rendered manifests
   apply         run 'kubectl apply' with the rendered manifests
   compare       compare to same appname in other directory
   commit        TODO: run 'git commit' (pull is implied)
   pull          TODO: run 'git pull' before starting to render, to avoid merge conflicts
 
-Environments:
-It is possible to specify an environment as follows '@lab'.
+Aliases:
+It is possible to configure aliases specify an environment as follows '@lab'.
 Shortcuts e.g. '@l' and even just 'l' or 'lab' are planned
 
 Render Definitions:

@@ -47,16 +47,16 @@ forall_envs_apps() {
 }
 
 run_actions() {
-    local file=$1
+    local rendef_file=$1
     shift
-    verbose reading render-def ${file} for ${envs}
+    verbose reading render-def ${rendef_file} for ${envs}
     renderer=$default_renderer
-    source ${file}
+    source ${rendef_file}
     init_${renderer}
     if $skip; then
         info skipping $appname $env
     else
-        info running $actions for $appname $env
+        info running $actions for ${output_dir}
         for action in "${@}" ; do
             verbose running ${action_funcs[$action]}
             ${action_funcs[$action]}
@@ -157,9 +157,9 @@ run_apply() {
 
 
 run_compare() {
-    run_actions $file render
+    run_actions $rendef_file render
     newdir=$output_dir
-    run_actions ${compare_dir}/$file render
+    run_actions ${compare_dir}/$rendef_file render
     olddir=$output_dir
     echo diffing $newdir $olddir
     pre_diff_cleanup $newdir $olddir
@@ -186,7 +186,7 @@ split_into_files() {
 # helm module
 
 init_helm() {
-    file_dir=$(dirname ${file})
+    local file_dir=$(dirname ${rendef_file})
     base_dir=$(dirname $(dirname ${file_dir}))
     unset helm_charts
     init_generic
@@ -204,6 +204,7 @@ init_helm() {
 
 
 render_helm() {
+    local f
     #opts=${helm_opts:-}
     for f in $helm_value_files; do helm_command+=" -f ${f}"; done
     helm_command+=" $helm_release"

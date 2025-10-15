@@ -8,6 +8,7 @@
 #   curl -OL https://raw.githubusercontent.com/kisst-org/markisst/refs/heads/main/render-manifests && chmod 755 render-manifests
 
 set -eu
+shopt -s extglob
 script_name="${0}"
 
 read_config() {
@@ -66,6 +67,7 @@ run_actions() {
 
 verbose() { if ${log_verbose:-false}; then printf "%s " "${@}"; echo; fi }
 info()    { if ${log_info:-true};     then echo "${@}"; fi }
+get_lhs() { echo ${1/*([^=])=/}; } # remove the lhs (left hand side) rhs=lhs
 
 parse_options() {
     def_files=""
@@ -81,7 +83,7 @@ parse_options() {
             -v|--verbose)   log_verbose=true; log_info=true;;
             -q|--quiet)     log_verbose=false; log_info=false;;
             --debug)        set -x;;
-            --env=*)        envs+=" ${arg#--env=}";; # usefull in aliases
+            --env=*)        envs+=" $(get_lhs $arg)";;
             -e|--env)       envs+=" $2"; shift ;;
             diff)           actions+=" diff";;
             apply)          actions+=" apply";;
@@ -98,6 +100,7 @@ parse_options() {
         shift
     done
     if [[ -z $envs ]]; then envs=${RENDER_DEFAULT_ENVS:-tst}; fi
+    envs=${envs//,/ }
     # better test that also works with one or more spaces, might be:
     #   if [[ ${envs:-} =~ '^ *$' ]]; then ...
     # see https://unix.stackexchange.com/questions/146942/how-can-i-test-if-a-variable-is-empty-or-contains-only-spaces

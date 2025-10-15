@@ -1,6 +1,6 @@
-# markisst: MAnifest Renderer Keep It Simple Software Tools
+# hooymarkt: Helm Or Other Yaml MAnifest Renderers for Kubernetes Tools
 
-The program `render-manifests` is a simple but flexible tool to render manifests for kubernetes.
+The program `hooymarkt` is a simple but flexible tool to render manifests for kubernetes.
 
 The working is to render the manifest for a specific application (`appname`) and a specific environment.
 
@@ -16,11 +16,11 @@ The list of environments can be configured in the file `markisst.config`
 # Render Definitions
 
 
-# Running `render-manifests`
+# Running `hooymarkt`
 It can be run with the following options:
 
 ```
-render-manifests [options] [environment...] <render-def>...
+hooymarkt [options] [environment...] <render-def>...
 
 Options:
   -h|--help     show this help
@@ -49,10 +49,10 @@ Additionally the following tools are needed for some commands:
 - `git`: for the `--pull` and `--commit` commands
 - `kubectl`: with a correct kubeconfig file for the `--diff` and `--apply`
 
-Installation can be done by copying the `render-manifests` script to the correct location.
+Installation can be done by copying the `hooymarkt` script to the correct location.
 ```
-curl -OL https://raw.githubusercontent.com/kisst-org/markisst/refs/heads/main/render-manifests
-chmod 755 render-manifests
+curl -OL https://raw.githubusercontent.com/kisst-org/markisst/refs/heads/main/hooymarkt
+chmod 755 hooymarkt
 ```
 No further file need to be downloaded
 
@@ -60,7 +60,7 @@ No further file need to be downloaded
 The script can be placed in the directory with all the manifests definitions.
 
 The following directory structure is recommended:
-- `render-manifests`: the script itself
+- `hooymarkt`: the script itself
 - `apps/<appname>/render-app-<appname>.def`: render-definitions for an application and environments
 - `apps/<appname>/values-<appname>-<env>.yaml`: helm values file for a specific environment of an application
 - `apps/<appname>/values-<appname>.yaml`: Optionally helm values file for all environments of an application (included before the environment specifc values)

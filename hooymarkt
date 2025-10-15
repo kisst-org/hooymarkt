@@ -56,8 +56,8 @@ run_actions() {
     if $skip; then
         info skipping $appname $env
     else
-        info running $actions for ${output_dir}
         for action in "${@}" ; do
+            info running $action for ${output_dir}
             verbose running ${action_funcs[$action]}
             ${action_funcs[$action]}
         done

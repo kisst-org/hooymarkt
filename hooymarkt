@@ -67,7 +67,7 @@ run_actions() {
 
 verbose() { if ${log_verbose:-false}; then printf "%s " "${@}"; echo; fi }
 info()    { if ${log_info:-true};     then echo "${@}"; fi }
-get_lhs() { echo ${1/*([^=])=/}; } # remove the lhs (left hand side) rhs=lhs
+get_rhs() { echo ${1/*([^=])=/}; } # remove the rhs (right hand side) lhs=rhs
 
 parse_options() {
     def_files=""
@@ -83,7 +83,7 @@ parse_options() {
             -v|--verbose)   log_verbose=true; log_info=true;;
             -q|--quiet)     log_verbose=false; log_info=false;;
             --debug)        set -x;;
-            --env=*)        envs+=" $(get_lhs $arg)";;
+            --env=*)        envs+=" $(get_rhs $arg)";;
             -e|--env)       envs+=" $2"; shift ;;
             diff)           actions+=" diff";;
             apply)          actions+=" apply";;

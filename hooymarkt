@@ -200,9 +200,9 @@ init_helm() {
     helm_release=$appname # this is probably not really used with helm template
     helm_command="helm template"
     helm_chart_dir=${base_dir}/helm-charts
-    helm_value_files="${env_dir}/values-env-${env}.yaml"
-    helm_value_files+=" $file_dir/values-app-${appname}.yaml"
-    helm_value_files+=" $file_dir/values-${appname}-${env}.yaml"
+    helm_value_files=(${env_dir}/values-env-${env}.yaml)
+    helm_value_files+=($file_dir/values-app-${appname}.yaml)
+    helm_value_files+=($file_dir/values-${appname}-${env}.yaml)
     if [[ ! -f $file_dir/values-${appname}-${env}.yaml ]]; then skip=true; fi
 }
 
@@ -210,7 +210,7 @@ init_helm() {
 render_helm() {
     local f
     #opts=${helm_opts:-}
-    for f in $helm_value_files; do helm_command+=" -f ${f}"; done
+    for f in ${helm_value_files[@]}; do helm_command+=" -f ${f}"; done
     helm_command+=" $helm_release"
     for ch in $helm_charts; do
         verbose "    $helm_command $helm_chart_dir/$ch"

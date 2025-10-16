@@ -12,9 +12,7 @@ shopt -s extglob
 script_name="${0}"
 
 read_config() {
-    declare -A -g aliases
-    declare -A -g kubectl_options
-    declare -A -g action_funcs
+    : ${RENDER_CONFIG_FILE:=${RENDER_ROOT_DIR:-.}/render.config}
     main_command=forall_apps_envs
     if [[ -f ${RENDER_CONFIG_FILE} ]]; then
         source ${RENDER_CONFIG_FILE}
@@ -24,46 +22,15 @@ read_config() {
 
 
 main() {
-    : ${RENDER_CONFIG_FILE:=${RENDER_ROOT_DIR:-.}/render.config}
+    declare -A enabled=( [render]=true [forall-appenvs]=true)
+    local command_list=git-pull,forall-appenvs,commit-all
+    local action_list=update,render,diff,add,commit-each
+    declare -A aliases
+    declare -A kubectl_options
+    declare -A action_funcs
     read_config
     parse_options "${@}"
-    $main_command
-}
-
-forall_apps_envs() {
-    for f in $def_files; do
-        for env in $envs; do
-            run_actions $f $actions
-        done
-    done
-}
-
-# The same, but do this per env first
-forall_envs_apps() {
-    for env in $envs; do
-        for f in $def_files; do
-            run_actions $f $actions
-        done
-    done
-}
-
-run_actions() {
-    local rendef_file=$1
-    shift
-    verbose reading render-def ${rendef_file} for ${env}
-    renderer=$default_renderer
-    source ${rendef_file}
-    init_${renderer}
-    if $skip; then
-        info skipping $appname $env
-    else
-        if [[ ! -z ${updates:-} ]]; then $run_update_func; fi
-        for action in "${@}" ; do
-            info running $action for ${env} ${appname} to ${output_dir}
-            verbose running ${action_funcs[$action]}
-            ${action_funcs[$action]}
-        done
-    fi
+    run_commands
 }
 
 verbose() { if ${log_verbose:-false}; then printf "%s " "${@}"; echo; fi }
@@ -76,29 +43,41 @@ verbose_cmd() {
 get_lhs() { echo ${1/=*([^=])/}; }  # get the lhs (left hand side) from lhs=rhs
 get_rhs() { echo ${1/*([^=])=/}; }  # get the rhs (right hand side) from lhs=rhs
 
-parse_options() {
-    def_files=""
-    envs=""
-    actions=render
-    declare -ag updates=()
-    while [ ! $# -eq 0 ]; do
-        arg=$1
+replace_aliases() {
+    declare -ag parsed_args=()
+    for arg in "${@}"; do
         lhs=$(get_lhs $arg)
         local al=${aliases[$lhs]:-none}
         if [[ $al != none ]]; then
             rhs=$(get_rhs $arg)
             if [[ -z $rhs ]]; then
-                arg="$al"
+                parsed_args+=("$arg")
             else
-                arg=$(printf $al $rhs);
+                parsed_args+=($(printf "%s" "$al"))
             fi
+        else
+            parsed_args+=("$arg")
         fi
+
+    done
+}
+
+parse_options() {
+    replace_aliases "$@"
+    def_files=""
+    envs=""
+    actions=render
+    declare -ag updates=()
+    for arg in "${parsed_args[@]}"; do
         case $arg in
             -h|--help|help) main_command=show_help;;
             -v|--verbose)   log_verbose=true; log_info=true;;
             -q|--quiet)     log_verbose=false; log_info=false;;
             --debug)        set -x;;
-            -e=*|--env=*)   envs+=" $(get_rhs $arg)";;
+            --env=*)        envs+=" $(get_rhs $arg)";;
+            --envs=*)       envs="$(get_rhs $arg)";;
+            --action=*)     action_list+=("$(get_rhs $arg)");;
+            --actions=*)    action_list=("$(get_rhs $arg)");;
             update:*)       updates+=(${arg#update:}) ;;
             diff)           actions+=" diff";;
             apply)          actions+=" apply";;
@@ -114,8 +93,9 @@ parse_options() {
         esac
         shift
     done
+    verbose running $(basename $0) ${parsed_args[@]}
     if [[ -z $envs ]]; then envs=${RENDER_DEFAULT_ENVS:-tst}; fi
-    envs=${envs//,/ }
+    envs=${envs//,/ }  # split on comma
     # better test that also works with one or more spaces, might be:
     #   if [[ ${envs:-} =~ '^ *$' ]]; then ...
     # see https://unix.stackexchange.com/questions/146942/how-can-i-test-if-a-variable-is-empty-or-contains-only-spaces
@@ -152,36 +132,77 @@ done
 ################################################
 # generic functions
 
-run_update_not_supported() {
-    echo no update support for $file
+run_commands() {
+    for command in ${command_list//,/ }; do
+        if ${enabled[$command]:-false}; then
+            verbose running command $command
+            run_command_$command;
+        else
+            verbose skipping command $command
+        fi
+    done
 }
 
-init_generic() {
-    action_funcs[diff]=run_diff
-    action_funcs[apply]=run_apply
-    action_funcs[compare]=run_compare
-    env_dir=${base_dir}/envs
-    manifest_dir=${base_dir}/manifests
-    output_dir=${manifest_dir}/${env}/${appname}
-    skip=false
-    run_update_func=run_update_not_supported
+run_command_git-pull() { git pull; }
+run_command_forall-appenvs() {
+    if ${order_appens:-true}; then
+        for def_file in $def_files; do
+            for env in $envs; do
+                run_actions
+            done
+        done
+    else
+        for env in $envs; do
+            for f in $def_files; do
+                run_actions
+            done
+        done
+    fi
 }
 
-run_diff() {
+
+run_actions() {
+    verbose reading def ${def_file} for ${env}
+    renderer=${default_renderer}
+    source ${def_file}
+    init_$renderer
+    if [[ ! -f ${main_env_file} ]]; then
+        info skipping $appname $env
+        return 0
+    fi
+    for action in ${action_list//,/ }; do
+        if ${enabled[$action]:-false}; then
+            info running $action for ${env} ${appname} to ${output_dir}
+            run_action_$action;
+        fi
+    done
+}
+
+run_action_update() {
+    update_last_helm_values_file
+}
+
+run_action_render() {
+    render_helm
+}
+
+run_action_diff() {
     info diffing $output_dir
     verbose_cmd kubectl diff ${kubectl_options[$env]} -f $output_dir || true
 }
 
-run_apply() {
+run_action_apply() {
     info applying $output_dir
     verbose_cmd kubectl apply ${kubectl_options[$env]} -f $output_dir
 }
 
 
-run_compare() {
-    run_actions $rendef_file render
+calc_origfile() { echo ${compare_dir}/$def_file; }
+run_action_compare() {
+    run_actions $def_file render
     newdir=$output_dir
-    run_actions ${compare_dir}/$rendef_file render
+    orig_file=$(calc_origfile)
+    run_actions ${orig_file} render
     olddir=$output_dir
     info diffing $newdir $olddir
     pre_diff_cleanup $newdir $olddir
@@ -190,10 +211,10 @@ run_compare() {
 
 basic_cleanup () {
     verbose removing comments, rollme,
-    verbose_cmd sed -i -e '/^ *#/d' -e '/rollme/d' $1/*.yaml $2/*.yaml
+    sed -i -e '/^ *#/d' -e '/rollme/d' $1/*.yaml $2/*.yaml
     verbose fixing unneeded quotes
-    verbose_cmd sed -i -e 's/: "\([a-zA-Z].*\)"$/: \1/' $1/*.yaml $2/*.yaml
-    verbose_cmd sed -i -e 's/: "\([a-zA-Z0-9].*[a-zA-Z]\)"$/: \1/' $1/*.yaml $2/*.yaml
+    sed -i -e 's/: "\([a-zA-Z].*\)"$/: \1/' $1/*.yaml $2/*.yaml
+    sed -i -e 's/: "\([a-zA-Z0-9].*[a-zA-Z]\)"$/: \1/' $1/*.yaml $2/*.yaml
 }
 
 pre_diff_cleanup() {
@@ -215,24 +236,26 @@ update_last_helm_values_file() {
     done
 }
 
-init_helm() {
-    local file_dir=$(dirname ${rendef_file})
-    base_dir=$(dirname $(dirname ${file_dir}))
-    unset helm_charts
-    init_generic
-    action_funcs[render]=render_helm
-    : ${helm_charts:=${charts:-}}
-
-    helm_release=$appname # this is probably not really used with helm template
-    helm_command="helm template"
+init_helm_dirs() {
+    base_dir=$1
+    env_dir=${base_dir}/envs
+    manifest_dir=${base_dir}/manifests
+    output_dir=${manifest_dir}/${env}/${appname}
     helm_chart_dir=${base_dir}/helm-charts
-    helm_value_files=(${env_dir}/values-env-${env}.yaml)
-    helm_value_files+=($file_dir/values-app-${appname}.yaml)
-    helm_value_files+=($file_dir/values-${appname}-${env}.yaml)
-    if [[ ! -f $file_dir/values-${appname}-${env}.yaml ]]; then skip=true; fi
-    run_update_func=update_last_helm_values_file
 }
 
+init_helm() {
+    def_file_dir=$(dirname ${def_file})
+    init_helm_dirs $(dirname $(dirname $def_file_dir))
+    : ${helm_charts:=${charts:-}}
+    main_env_file="$def_file_dir/values-${appname}-${env}.yaml"
+    helm_release=$appname # this is probably not really used with helm template
+    helm_command="helm template"
+    helm_value_files=(${env_dir}/values-env-${env}.yaml)
+    helm_value_files+=($def_file_dir/values-app-${appname}.yaml)
+    helm_value_files+=($main_env_file)
+    run_update_func=update_last_helm_values_file
+}
 
 render_helm() {
     local f

@@ -58,7 +58,6 @@ replace_aliases() {
         else
             parsed_args+=("$arg")
         fi
-
     done
 }
 
@@ -91,7 +90,6 @@ parse_options() {
                     exit 1
                 fi
         esac
-        shift
     done
     verbose running $(basename $0) ${parsed_args[@]}
     if [[ -z $envs ]]; then envs=${RENDER_DEFAULT_ENVS:-tst}; fi

@@ -198,11 +198,13 @@ run_action_apply() {
 
 
 run_action_compare() {
+    compare_prefix_dir="tmp/"
     run_action_render
     newdir=$output_dir
     def_file=$(calc_compare_def_file)
     run_action_render
     olddir=$output_dir
+    compare_prefix_dir=""
 
     info diffing $newdir $olddir
     pre_diff_cleanup $newdir $olddir
@@ -239,7 +241,7 @@ update_last_helm_values_file() {
 init_helm_dirs() {
     base_dir=$1
     env_dir=${base_dir}/envs
-    output_dir=${base_dir}/manifests/${env}/${appname}
+    output_dir=${compare_prefix_dir:-}${base_dir}/manifests/${env}/${appname}
     helm_chart_dir=${base_dir}/helm-charts
 }
 
@@ -260,6 +262,7 @@ render_helm() {
     local f
     for f in ${helm_value_files}; do helm_command+=" -f ${f}"; done
     helm_command+=" $helm_release"
+    verbose_cmd rm -rf ${output_dir}
     for ch in $helm_charts; do
         local cmd="$helm_command $helm_chart_dir/$ch"
         verbose "    $cmd"

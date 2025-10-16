@@ -22,7 +22,7 @@ read_config() {
 
 
 main() {
-    declare -A enabled=( [render]=true [forall-appenvs]=true)
+    declare -A enabled=( [render]=true [forall-appenvs]=true [compare]=true)
     local command_list=git-pull,forall-appenvs,commit-all
     local action_list=update,render,diff,add,commit-each
     declare -A aliases
@@ -79,9 +79,9 @@ parse_options() {
             --action=*)     action_list+=("$(get_rhs $arg)");;
             --actions=*)    action_list=("$(get_rhs $arg)");;
             update:*)       updates+=(${arg#update:}) ;;
-            diff)           actions+=" diff";;
-            apply)          actions+=" apply";;
-            compare)        actions="compare";; # will render
+            diff)           enable[diff]=true;;
+            apply)          enable[apply]=TODO;;
+            compare)        action_list="compare";; # will render
             *)
                 if [[ -f ${arg} ]]; then def_files+=" ${arg}"
                 elif [[ -d ${arg} ]]; then def_files+=" ${arg}/*.def"
@@ -160,9 +160,8 @@ run_command_forall-appenvs() {
     fi
 }
 
-
 run_actions() {
-    verbose reading def ${def_file} for ${env}
+    verbose reading def ${def_file} for ${env} with ${action_list}
     renderer=${default_renderer}
     source ${def_file}
     init_$renderer
@@ -183,7 +182,8 @@ run_action_update() {
 }
 
 run_action_render() {
-    render_helm
+    source ${def_file}
+    render_$renderer
 }
 
 run_action_diff() {
@@ -197,13 +197,14 @@ run_action_apply() {
 }
 
 
-calc_origfile() { echo ${compare_dir}/$def_file; }
 run_action_compare() {
-    run_actions $def_file render
+    run_action_render
     newdir=$output_dir
-    orig_file=$(calc_origfile)
-    run_actions ${orig_file} render
+    def_file=$(calc_compare_def_file)
+    echo MMM $def_file
+    run_action_render
     olddir=$output_dir
+
     info diffing $newdir $olddir
     pre_diff_cleanup $newdir $olddir
     verbose_cmd diff -r $newdir $olddir || true
@@ -239,25 +240,24 @@ update_last_helm_values_file() {
 init_helm_dirs() {
     base_dir=$1
     env_dir=${base_dir}/envs
-    manifest_dir=${base_dir}/manifests
-    output_dir=${manifest_dir}/${env}/${appname}
+    output_dir=${base_dir}/manifests/${env}/${appname}
     helm_chart_dir=${base_dir}/helm-charts
 }
 
 init_helm() {
     def_file_dir=$(dirname ${def_file})
     init_helm_dirs $(dirname $(dirname $def_file_dir))
-    : ${helm_charts:=${charts:-}}
     main_env_file="$def_file_dir/values-${appname}-${env}.yaml"
     helm_release=$appname # this is probably not really used with helm template
     helm_command="helm template"
-    helm_value_files=(${env_dir}/values-env-${env}.yaml)
-    helm_value_files+=($def_file_dir/values-app-${appname}.yaml)
-    helm_value_files+=($main_env_file)
+    helm_value_files=${env_dir}/values-env-${env}.yaml
+    helm_value_files+=" $def_file_dir/values-app-${appname}.yaml"
+    helm_value_files+=" $main_env_file"
     run_update_func=update_last_helm_values_file
 }
 
 render_helm() {
+    init_helm
     local f
     for f in ${helm_value_files}; do helm_command+=" -f ${f}"; done
     helm_command+=" $helm_release"

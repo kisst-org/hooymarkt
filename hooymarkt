@@ -79,8 +79,8 @@ parse_options() {
             --action=*)     action_list+=("$(get_rhs $arg)");;
             --actions=*)    action_list=("$(get_rhs $arg)");;
             update:*)       updates+=(${arg#update:}) ;;
-            diff)           enable[diff]=true;;
-            apply)          enable[apply]=TODO;;
+            diff)           enabled[diff]=true;;
+            apply)          enabled[apply]=TODO;;
             compare)        action_list="compare";; # will render
             *)
                 if [[ -f ${arg} ]]; then def_files+=" ${arg}"
@@ -201,7 +201,6 @@ run_action_compare() {
     run_action_render
     newdir=$output_dir
     def_file=$(calc_compare_def_file)
-    echo MMM $def_file
     run_action_render
     olddir=$output_dir
 

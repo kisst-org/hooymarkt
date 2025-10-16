@@ -84,9 +84,9 @@ parse_options() {
             compare)        actions="compare";; # will render
             *)
                 if [[ -f ${arg} ]]; then def_files+=" ${arg}"
-                elif [[ -d ${arg} ]]; then def_files+=" ${arg}/render*.def"
+                elif [[ -d ${arg} ]]; then def_files+=" ${arg}/*.def"
                 else
-                    echo unknown argument ${arg}, should be a command, file or directory with render*.def file
+                    echo unknown argument ${arg}, should be a command, file or directory with \*.def file
                     show_help
                     exit 1
                 fi
@@ -259,8 +259,7 @@ init_helm() {
 
 render_helm() {
     local f
-    #opts=${helm_opts:-}
-    for f in ${helm_value_files[@]}; do helm_command+=" -f ${f}"; done
+    for f in ${helm_value_files}; do helm_command+=" -f ${f}"; done
     helm_command+=" $helm_release"
     for ch in $helm_charts; do
         local cmd="$helm_command $helm_chart_dir/$ch"

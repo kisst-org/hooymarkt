@@ -20,17 +20,18 @@ read_config() {
     default_renderer=${RENDER_DEFAULT_RENDERER:-helm}
 }
 
-
 main() {
-    declare -A enabled=( [render]=true [forall-appenvs]=true [compare]=true)
     local command_list=git-pull,forall-appenvs,commit-all
-    local action_list=update,render,diff,add,commit-each
+    local action_list=render
     declare -A aliases
     declare -A kubectl_options
     declare -A action_funcs
+    def_files=""
+    envs=""
+    declare -ag updates=()
     read_config
     parse_options "${@}"
-    run_commands
+    forall-appenvs
 }
 
 verbose() { if ${log_verbose:-false}; then printf "%s " "${@}"; echo; fi }
@@ -63,29 +64,25 @@ replace_aliases() {
 
 parse_options() {
     replace_aliases "$@"
-    def_files=""
-    envs=""
-    actions=render
-    declare -ag updates=()
     for arg in "${parsed_args[@]}"; do
         case $arg in
             -h|--help|help) main_command=show_help;;
             -v|--verbose)   log_verbose=true; log_info=true;;
             -q|--quiet)     log_verbose=false; log_info=false;;
             --debug)        set -x;;
-            --env=*)        envs+=" $(get_rhs $arg)";;
-            --envs=*)       envs="$(get_rhs $arg)";;
-            --action=*)     action_list+=("$(get_rhs $arg)");;
-            --actions=*)    action_list=("$(get_rhs $arg)");;
+            --env-list=*)   envs="$(get_rhs $arg)";;
+            --cmd-list=*)   action_list="$(get_rhs $arg)";;
+            env:*)          envs+=" ${arg#env:}";;
+            cmd:*)          action_list+=${arg#cmd:};;
             update:*)       updates+=(${arg#update:}) ;;
-            diff)           enabled[diff]=true;;
-            apply)          enabled[apply]=TODO;;
-            compare)        action_list="compare";; # will render
+            diff)           action_list=diff;;
+            apply)          action_list=apply;;
+            compare:*)      action_list=compare; compare_dir=${arg#compare:};;
             *)
                 if [[ -f ${arg} ]]; then def_files+=" ${arg}"
                 elif [[ -d ${arg} ]]; then def_files+=" ${arg}/*.def"
                 else
-                    echo unknown argument ${arg}, should be a command, file or directory with \*.def file
+                    echo unknown argument ${arg}, should be a command, file or directory with one \*.def file
                     show_help
                     exit 1
                 fi
@@ -112,7 +109,7 @@ Commands
   help          show_help
   diff          run 'kubectl diff' with the rendered manifests
   apply         run 'kubectl apply' with the rendered manifests
-  compare       compare to same appname in other directory
+  compare:<to>  compare to same in other manifests directory
   update:<expr> for helm update the final values with yq expression
   commit        TODO: run 'git commit' (pull is implied)
   pull          TODO: run 'git pull' before starting to render, to avoid merge conflicts
@@ -130,32 +127,19 @@ done
 ################################################
 # generic functions
 
-run_commands() {
-    for command in ${command_list//,/ }; do
-        if ${enabled[$command]:-false}; then
-            verbose running command $command
-            run_command_$command;
-        else
-            verbose skipping command $command
-        fi
+forall-appenvs() {
+    for def_file in $def_files; do
+        for env in $envs; do
+            run_actions
+        done
     done
 }
-
-run_command_git-pull() { git pull; }
-run_command_forall-appenvs() {
-    if ${order_appens:-true}; then
-        for def_file in $def_files; do
-            for env in $envs; do
-                run_actions
-            done
+forall-envapps() {
+    for env in $envs; do
+        for f in $def_files; do
+            run_actions
         done
-    else
-        for env in $envs; do
-            for f in $def_files; do
-                run_actions
-            done
-        done
-    fi
+    done
 }
 
 run_actions() {
@@ -168,10 +152,8 @@ run_actions() {
         return 0
     fi
     for action in ${action_list//,/ }; do
-        if ${enabled[$action]:-false}; then
-            info running $action for ${env} ${appname} to ${output_dir}
-            run_action_$action;
-        fi
+        info running $action for ${env} ${appname} to ${output_dir}
+        run_action_$action;
     done
 }
 
@@ -185,27 +167,33 @@ run_action_render() {
 }
 
 run_action_diff() {
+    run_action_render
     info diffing $output_dir
     verbose_cmd kubectl diff ${kubectl_options[$env]} -f $output_dir || true
 }
 
 run_action_apply() {
+    run_action_render
     info applying $output_dir
     verbose_cmd kubectl apply ${kubectl_options[$env]} -f $output_dir
 }
 
-
 run_action_compare() {
-    compare_prefix_dir="tmp/"
     run_action_render
-    newdir=$output_dir
-    def_file=$(calc_compare_def_file)
-    run_action_render
-    olddir=$output_dir
-    compare_prefix_dir=""
+    olddir=${output_dir}
+    newdir=${compare_dir}/${env}/${appname}
 
+    if ${clean_before_compare:-true}; then
+        verbose making tmp copies for cleaning
+        verbose_cmd mkdir -p tmp/$(dirname $olddir)
+        verbose_cmd cp -r $olddir tmp/$(dirname $olddir)
+        olddir=tmp/${olddir}
+        verbose_cmd mkdir -p tmp/$(dirname $newdir)
+        verbose_cmd cp -r $newdir tmp/$(dirname $newdir)
+        newdir=tmp/${newdir}
+        pre_diff_cleanup $newdir $olddir
+    fi
     info diffing $newdir $olddir
-    pre_diff_cleanup $newdir $olddir
     verbose_cmd diff -r $newdir $olddir || true
 }
 
